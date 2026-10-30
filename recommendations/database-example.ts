@@ -150,11 +150,97 @@ export interface PrismaInquiryClient {
   $transaction<T>(fn: (tx: PrismaInquiryClient) => Promise<T>): Promise<T>;
 }
 
-/** Minimal Redis interface — compatible with ioredis and node-redis v4. */
+/**
+ * Unified Redis cache interface for repository read-through caching.
+ *
+ * NOTE ON CLIENT DIFFERENCES:
+ * `ioredis` implements `.setex(key, seconds, value)`.
+ * `node-redis` (v4+) implements `.setEx(key, seconds, value)` or `.set(key, value, { EX: seconds })`.
+ * Cross-client compatibility cannot be assumed without explicit adapters.
+ * Use `createIoRedisCacheAdapter` or `createNodeRedisCacheAdapter` to bridge client APIs.
+ */
+export interface RedisCacheAdapter {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttlSeconds: number): Promise<unknown>;
+  del(key: string): Promise<unknown>;
+}
+
+/** Legacy / raw client interface supported with adapter normalization. */
 export interface RedisClientLike {
   get(key: string): Promise<string | null>;
-  setEx(key: string, ttlSeconds: number, value: string): Promise<unknown>;
+  setEx?(key: string, ttlSeconds: number, value: string): Promise<unknown>;
+  setex?(key: string, ttlSeconds: number, value: string): Promise<unknown>;
+  set?(key: string, value: string, options?: { EX?: number }): Promise<unknown>;
   del(key: string): Promise<unknown>;
+}
+
+export type RedisCacheOption = RedisCacheAdapter | RedisClientLike;
+
+/**
+ * Creates a cache adapter for `ioredis` clients.
+ * Translates standard `.set(key, value, ttl)` to ioredis `.setex(key, ttl, value)`.
+ */
+export function createIoRedisCacheAdapter(ioredisClient: {
+  get(key: string): Promise<string | null>;
+  setex(key: string, seconds: number, value: string): Promise<unknown>;
+  del(key: string): Promise<unknown>;
+}): RedisCacheAdapter {
+  return {
+    get: (key: string) => ioredisClient.get(key),
+    set: (key: string, value: string, ttlSeconds: number) =>
+      ioredisClient.setex(key, ttlSeconds, value),
+    del: (key: string) => ioredisClient.del(key),
+  };
+}
+
+/**
+ * Creates a cache adapter for `node-redis` (v4+) clients.
+ * Translates standard `.set(key, value, ttl)` to node-redis `.setEx(key, ttl, value)` or `.set(key, value, { EX: ttl })`.
+ */
+export function createNodeRedisCacheAdapter(nodeRedisClient: {
+  get(key: string): Promise<string | null>;
+  setEx?(key: string, seconds: number, value: string): Promise<unknown>;
+  set?(key: string, value: string, options?: { EX?: number }): Promise<unknown>;
+  del(key: string): Promise<unknown>;
+}): RedisCacheAdapter {
+  return {
+    get: (key: string) => nodeRedisClient.get(key),
+    set: async (key: string, value: string, ttlSeconds: number) => {
+      if (typeof nodeRedisClient.setEx === 'function') {
+        return nodeRedisClient.setEx(key, ttlSeconds, value);
+      }
+      if (typeof nodeRedisClient.set === 'function') {
+        return nodeRedisClient.set(key, value, { EX: ttlSeconds });
+      }
+      throw new Error('node-redis client must implement setEx or set');
+    },
+    del: (key: string) => nodeRedisClient.del(key),
+  };
+}
+
+/** Normalizes a raw Redis client or adapter into a consistent RedisCacheAdapter. */
+function normalizeCacheClient(client?: RedisCacheOption): RedisCacheAdapter | undefined {
+  if (!client) return undefined;
+  if ('set' in client && typeof client.set === 'function' && client.set.length >= 3) {
+    return client as RedisCacheAdapter;
+  }
+  return {
+    get: (key: string) => client.get(key),
+    set: async (key: string, value: string, ttlSeconds: number) => {
+      if ('setEx' in client && typeof client.setEx === 'function') {
+        return client.setEx(key, ttlSeconds, value);
+      }
+      if ('setex' in client && typeof client.setex === 'function') {
+        return client.setex(key, ttlSeconds, value);
+      }
+      if ('set' in client && typeof client.set === 'function') {
+        const setFn = client.set as (k: string, v: string, opt?: { EX?: number }) => Promise<unknown>;
+        return setFn(key, value, { EX: ttlSeconds });
+      }
+      throw new Error('Unsupported Redis client interface. Provide an explicit adapter via createIoRedisCacheAdapter or createNodeRedisCacheAdapter.');
+    },
+    del: (key: string) => client.del(key),
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -162,22 +248,26 @@ export interface RedisClientLike {
 //
 // Connection pooling note:
 //   When deploying to a serverless environment (e.g. Vercel, AWS Lambda) each
-//   function invocation opens a new database connection.  Without pooling this
-//   quickly exhausts PostgreSQL's max_connections.  Use either:
+//   function invocation opens a new database connection. Without pooling this
+//   quickly exhausts PostgreSQL's max_connections. Use either:
 //     - Prisma Accelerate (managed connection pool)
 //     - PgBouncer (self-managed, transaction-mode pooling)
 //   Configure the pooled DATABASE_URL in the datasource block.
 //
 // Redis cache failure policy:
-//   A cache miss or Redis error is NEVER fatal.  The repository always falls
-//   back to the database.  This means a Redis outage degrades performance
+//   A cache miss or Redis error is NEVER fatal. The repository always falls
+//   back to the database. This means a Redis outage degrades performance
 //   (more DB load) but does not cause availability loss.
 // ──────────────────────────────────────────────────────────────────────────────
 export class InquiryRepository {
+  private readonly redis?: RedisCacheAdapter;
+
   constructor(
     private readonly prisma: PrismaInquiryClient,
-    private readonly redis?: RedisClientLike
-  ) {}
+    redis?: RedisCacheOption
+  ) {
+    this.redis = normalizeCacheClient(redis);
+  }
 
   // ── Create ─────────────────────────────────────────────────────────────────
 
@@ -266,7 +356,7 @@ export class InquiryRepository {
 
     if (this.redis) {
       // Cache for 10 minutes. Swallow errors — a write failure is not critical.
-      await this.redis.setEx(cacheKey, 600, JSON.stringify(dto)).catch(() => undefined);
+      await this.redis.set(cacheKey, JSON.stringify(dto), 600).catch(() => undefined);
     }
 
     return dto;

@@ -4,7 +4,13 @@
  * Database and Redis are mocked — no live connections are required.
  */
 
-import { InquiryRepository, InquiryRecord, PrismaInquiryClient } from '../recommendations/database-example';
+import {
+  InquiryRepository,
+  InquiryRecord,
+  PrismaInquiryClient,
+  createIoRedisCacheAdapter,
+  createNodeRedisCacheAdapter,
+} from '../recommendations/database-example';
 import type { CreateInquiryDTO } from '../recommendations/validation-example';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -145,5 +151,53 @@ describe('InquiryRepository.updateStatus — cache invalidation', () => {
 
     // Should not throw even if del fails
     await expect(repo.updateStatus('uuid-1', 'ARCHIVED')).resolves.toBeDefined();
+  });
+});
+
+describe('Redis Cache Adapters (ioredis vs node-redis)', () => {
+  test('createIoRedisCacheAdapter maps set to ioredis.setex', async () => {
+    const rawIoRedis = {
+      get: jest.fn().mockResolvedValue('{"id":"cached-1"}'),
+      setex: jest.fn().mockResolvedValue('OK'),
+      del: jest.fn().mockResolvedValue(1),
+    };
+    const adapter = createIoRedisCacheAdapter(rawIoRedis);
+
+    expect(await adapter.get('test-key')).toBe('{"id":"cached-1"}');
+    expect(rawIoRedis.get).toHaveBeenCalledWith('test-key');
+
+    await adapter.set('test-key', 'data', 300);
+    expect(rawIoRedis.setex).toHaveBeenCalledWith('test-key', 300, 'data');
+
+    await adapter.del('test-key');
+    expect(rawIoRedis.del).toHaveBeenCalledWith('test-key');
+  });
+
+  test('createNodeRedisCacheAdapter maps set to node-redis setEx', async () => {
+    const rawNodeRedis = {
+      get: jest.fn().mockResolvedValue(null),
+      setEx: jest.fn().mockResolvedValue('OK'),
+      del: jest.fn().mockResolvedValue(1),
+    };
+    const adapter = createNodeRedisCacheAdapter(rawNodeRedis);
+
+    expect(await adapter.get('test-key')).toBeNull();
+    await adapter.set('test-key', 'data', 600);
+    expect(rawNodeRedis.setEx).toHaveBeenCalledWith('test-key', 600, 'data');
+    await adapter.del('test-key');
+    expect(rawNodeRedis.del).toHaveBeenCalledWith('test-key');
+  });
+
+  test('createNodeRedisCacheAdapter supports node-redis v4 set({ EX }) option', async () => {
+    const rawNodeRedis = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue('OK'),
+      del: jest.fn().mockResolvedValue(1),
+    };
+    const adapter = createNodeRedisCacheAdapter(rawNodeRedis);
+
+    await adapter.set('test-key', 'data', 120);
+    expect(rawNodeRedis.set(expect.any(String), expect.any(String), expect.any(Object))).toBeDefined;
+    expect(rawNodeRedis.set).toHaveBeenCalledWith('test-key', 'data', { EX: 120 });
   });
 });

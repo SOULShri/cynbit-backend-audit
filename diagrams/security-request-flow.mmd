@@ -1,5 +1,5 @@
-%% title: Security & Validation Request Processing Flow
-%% description: End-to-end lifecycle of a secure backend mutation request, detailing defense-in-depth enforcement from edge rate limiting through authentication, role checks, validation, business execution, and centralized error handling.
+%% title: Security & Access Control Processing Flow
+%% description: End-to-end lifecycle of API requests aligned with api-example.ts. Inquiry creation (POST) is public, rate-limited, and schema-validated; inquiry listing and retrieval (GET) require cryptographic JWT authentication and RBAC authorization.
 
 sequenceDiagram
     autonumber
@@ -7,58 +7,85 @@ sequenceDiagram
     actor Client as API Client / Consumer
     participant Gateway as API Gateway / Router
     participant RL as Rate Limiter (Redis Lua)
-    participant Auth as JWT Middleware (jose)
+    participant Auth as JWT Auth Guard (jose HS256)
     participant RBAC as Role Guard (requireRoles)
     participant Val as Input Validator (Zod)
-    participant Svc as Business Service Layer
+    participant Svc as Inquiry Service & DB Layer
     participant Err as Centralized Error Handler
 
-    Client->>Gateway: POST /api/v1/inquiries (Bearer Token + JSON Payload)
-    Gateway->>Gateway: Inject x-request-id & resolve client IP
+    %% ─────────────────────────────────────────────────────────────────────────────
+    %% Branch 1: Public Inquiry Submission
+    %% ─────────────────────────────────────────────────────────────────────────────
+    Note over Client,Gateway: Route 1: Public Inquiry Submission (POST /api/v1/inquiries)
+    Client->>Gateway: POST /api/v1/inquiries (JSON payload — No Auth Token Required)
+    Gateway->>Gateway: Inject correlation ID (x-request-id) & resolve client IP
+
+    Note over Gateway,RL: 1. Perimeter IP Rate Limiting (Public Endpoint)
+    Gateway->>RL: Check rate threshold for client IP
+    alt IP Limit Exceeded
+        RL-->>Client: 429 Too Many Requests (RateLimit-Limit, Remaining, Reset, Retry-After)
+    else Within Rate Limit
+        RL->>Val: Forward directly to validation (Bypasses Auth & RBAC)
+
+        Note over Val,Val: 2. Zero-Trust Input Validation (CreateInquirySchema)
+        Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name
+        alt Validation Fails or Honeypot Triggered
+            Val-->>Client: 400 Bad Request (Field-level validation error envelope)
+        else Validation Passes
+            Val->>Svc: Invoke inquiryService.createInquiry(dto, clientIp)
+            alt Database Failure / Constraint Violation
+                Svc->>Err: Bubble error to centralized handler
+                Err->>Err: Intercept error, mask DB internals (Prisma P-codes), log JSON
+                Err-->>Client: 500 Internal Server Error (Sanitized envelope)
+            else Successful Persistence
+                Svc-->>Client: 201 Created ({ success: true, data: { id, status: "PENDING" } })
+            end
+        end
+    end
+
+    %% ─────────────────────────────────────────────────────────────────────────────
+    %% Branch 2: Protected Admin/Engineer Queries
+    %% ─────────────────────────────────────────────────────────────────────────────
+    Note over Client,Gateway: Route 2: Protected Inquiries Query (GET /api/v1/inquiries)
+    Client->>Gateway: GET /api/v1/inquiries (Header: Authorization: Bearer <JWT>)
+    Gateway->>Gateway: Inject correlation ID (x-request-id)
 
     Note over Gateway,RL: 1. Rate Limiting Check
-    Gateway->>RL: Check rate threshold for client IP
-    alt Limit Exceeded (Over threshold)
-        RL-->>Client: 429 Too Many Requests (RateLimit-Reset, Retry-After per RFC 6585/9333)
-    else Within Limit
+    Gateway->>RL: Check caller threshold
+    alt Rate Limit Exceeded
+        RL-->>Client: 429 Too Many Requests
+    else Within Rate Limit
         RL->>Auth: Pass request forward
 
-        Note over RL,Auth: 2. Authentication & Integrity Check
+        Note over RL,Auth: 2. Cryptographic JWT Signature Verification
         Auth->>Auth: Verify JWT signature (HS256 allowlist, 32+ byte secret)
         Auth->>Auth: Validate claims: exp, iss, aud, sub, roles
         Auth->>Auth: Check iat against current time (60s clock-skew tolerance)
-        Auth->>Auth: Query session revocation store in Redis
-        alt Token Expired / Forged / Revoked
-            Auth-->>Client: 401 Unauthorized (INVALID_TOKEN or SESSION_REVOKED)
+        Auth->>Auth: Query Redis session revocation store
+        alt Token Expired / Forged / Missing exp / Future iat
+            Auth-->>Client: 401 Unauthorized (INVALID_TOKEN)
+        else Session Revoked
+            Auth-->>Client: 401 Unauthorized (SESSION_REVOKED)
         else Redis Revocation Infrastructure Down
             Auth-->>Client: 503 Service Unavailable (REVOCATION_SERVICE_UNAVAILABLE)
         else Token Authenticated
             Auth->>RBAC: Attach req.user context and forward
 
-            Note over Auth,RBAC: 3. Role-Based Access Control (RBAC)
-            RBAC->>RBAC: Verify req.user.roles contains permitted role(s)
-            alt Lacks Required Role
+            Note over Auth,RBAC: 3. Role-Based Access Control (RBAC Guard)
+            RBAC->>RBAC: Verify req.user.roles includes 'ADMIN' or 'ENGINEER'
+            alt Lacks Permitted Role
                 RBAC-->>Client: 403 Forbidden (FORBIDDEN)
             else Role Authorized
-                RBAC->>Val: Forward to route controller
+                RBAC->>Val: Forward query parameters
 
-                Note over RBAC,Val: 4. Zero-Trust Input Validation
-                Val->>Val: Execute Zod schema validation (safeParseAsync)
-                Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name
-                alt Input Invalid or Honeypot Triggered
-                    Val-->>Client: 400 Bad Request (Field-level validation error envelope)
-                else Input Validated
-                    Val->>Svc: Invoke business service with typed DTO
-
-                    Note over Val,Svc: 5. Business Logic & Persistence
-                    Svc->>Svc: Execute domain operations & database transactions
-                    alt Unhandled Exception / Database Constraint Error
-                        Svc->>Err: Bubble error to centralized handler
-                        Err->>Err: Intercept error, mask DB internals (Prisma P-code), log JSON
-                        Err-->>Client: 500 Internal Server Error (Sanitized error envelope)
-                    else Successful Execution
-                        Svc-->>Client: 201 Created (Standardized ApiResponse envelope)
-                    end
+                Note over RBAC,Val: 4. Query Schema Validation (InquiryQuerySchema)
+                Val->>Val: Validate page, limit, status, industry filters
+                alt Query Parameters Invalid
+                    Val-->>Client: 400 Bad Request
+                else Query Valid
+                    Val->>Svc: Invoke inquiryService.getInquiries(query)
+                    Svc->>Svc: Query read-through cache (Redis) & PostgreSQL
+                    Svc-->>Client: 200 OK ({ success: true, data: [...], meta: { page, total } })
                 end
             end
         end

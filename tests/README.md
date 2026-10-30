@@ -27,7 +27,7 @@ npm run build
 | [`rate-limiter.test.ts`](./rate-limiter.test.ts) | `rate-limiter.ts` | Threshold enforcement, HTTP 429 status, RFC 9333 headers, `Retry-After` derivation from Redis `PTTL`, IP isolation, `skip()` bypass, in-process fallback on Redis errors, and dedicated adapter tests (`ioredis`, `node-redis`). |
 | [`validation.test.ts`](./validation.test.ts) | `validation-example.ts` | Schema parsing, Unicode international name handling, length boundaries, email format normalization, honeypot bot interception, and coerced integer pagination. |
 | [`error-handler.test.ts`](./error-handler.test.ts) | `error-handler.ts` | Operational error mapping (400, 403, 404), Prisma P-code interception, correlation ID preservation, and stack trace hiding in production. |
-| [`database.test.ts`](./database.test.ts) | `database-example.ts` | Repository query delegation, read-through Redis cache hits/misses, fallback on Redis exceptions, and cache invalidation on status updates. |
+| [`database.test.ts`](./database.test.ts) | `database-example.ts` | Repository query delegation, read-through Redis cache hits/misses, fallback on Redis exceptions, cache invalidation on status updates, and dedicated cache adapter tests (`ioredis`, `node-redis`). |
 
 ---
 

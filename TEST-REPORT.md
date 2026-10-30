@@ -38,9 +38,9 @@ PASS tests/error-handler.test.ts
 PASS tests/database.test.ts
 
 Test Suites: 5 passed, 5 total
-Tests:       1 skipped, 54 passed, 55 total
+Tests:       1 skipped, 57 passed, 58 total
 Snapshots:   0 total
-Time:        3.516 s
+Time:        3.478 s
 Ran all test suites.
 ```
 
@@ -54,8 +54,8 @@ Ran all test suites.
 | `tests/rate-limiter.test.ts` | `recommendations/rate-limiter.ts` | 12 | 1 | **PASS** |
 | `tests/validation.test.ts` | `recommendations/validation-example.ts` | 14 | 0 | **PASS** |
 | `tests/error-handler.test.ts` | `recommendations/error-handler.ts` | 8 | 0 | **PASS** |
-| `tests/database.test.ts` | `recommendations/database-example.ts` | 6 | 0 | **PASS** |
-| **TOTAL** | | **54** | **1** | **ALL PASSED** |
+| `tests/database.test.ts` | `recommendations/database-example.ts` | 9 | 0 | **PASS** |
+| **TOTAL** | | **57** | **1** | **ALL PASSED** |
 
 ---
 
@@ -117,13 +117,16 @@ Ran all test suites.
 - Generates a fresh UUIDv4 correlation ID when `x-request-id` is absent.
 - Detects Prisma P-code errors and masks them as generic `DATABASE_ERROR` responses.
 
-### 5.5 `database.test.ts` (6 tests)
+### 5.5 `database.test.ts` (9 tests)
 - `create()` persists inquiry with `PENDING` status and resolved `clientIp`.
 - `findById()` serves cached data directly without database query on cache hit.
 - `findById()` fetches from PostgreSQL and populates Redis on cache miss.
 - `findById()` falls back gracefully to database when Redis query throws.
 - `updateStatus()` invalidates Redis cache entry (`DEL`) upon successful database update.
 - `updateStatus()` completes transaction without throwing if cache invalidation fails.
+- `createIoRedisCacheAdapter` translates `.set()` into `ioredis` `.setex(key, ttl, value)`.
+- `createNodeRedisCacheAdapter` translates `.set()` into `node-redis` `.setEx(key, ttl, value)`.
+- `createNodeRedisCacheAdapter` supports `node-redis` v4 `.set(key, value, { EX: ttl })`.
 
 ---
 

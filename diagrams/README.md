@@ -6,7 +6,7 @@ This directory contains visual models illustrating both the **empirically observ
 
 ## 1. Observed Request Flow (Next.js Server Actions)
 
-> **Context:** Captures the actual client-to-server interaction on the `/contact` route verified through passive network inspection and JavaScript bundle analysis. Server-side processing beyond the Server Action entrypoint was unobservable and is explicitly marked as unverified.
+> **Context:** Captures the client-to-server interaction on the `/contact` route identified through passive network inspection and client JavaScript bundle analysis. The Server Action reference was identified in the public bundle; form submission was deliberately **not invoked** during the audit to respect testing boundaries.
 
 ```mermaid
 sequenceDiagram
@@ -15,29 +15,31 @@ sequenceDiagram
     actor User as Client Browser
     participant Edge as Vercel Edge Network (Mumbai POP)
     participant NextApp as Next.js App Router
-    participant Action as submitInquiry Server Action (ID: 40247ba4...)
+    participant Action as submitInquiry Action (ID: 40247ba4...)
     participant Backend as Unverified Backend Services (CRM / Email / DB)
 
-    Note over User,Edge: Phase 1: Document Retrieval (Observed)
+    Note over User,Edge: Phase 1: Document Retrieval (Directly Observed)
     User->>Edge: GET /contact (HTTPS / TLS 1.3)
     Edge-->>User: 200 OK (ISR Pre-rendered HTML, 49ms, 64 KB)
-    Note over User: Form loads client bundle: contact/page-*.js<br/>User inputs: fullName, email, company, industry, message
 
-    Note over User,Action: Phase 2: Form Submission RPC (Observed Mechanism)
-    User->>Edge: POST /contact (multipart/form-data)
-    Note over User,Edge: Header: Next-Action: 40247ba4465344b3386595bab4303317cdcce907df<br/>Transported via internal React Server Action callServer RPC.<br/>No public REST endpoint exists (e.g., /api/contact does not exist).
-    Edge->>NextApp: Forward RPC payload to Serverless Function
-    NextApp->>Action: Execute submitInquiry(formData)
+    Note over User,Action: Phase 2: Action Registration in Client Bundle (Directly Observed)
+    Note over User: Form loads client bundle: contact/page-a581c8d7462124d9.js<br/>Bundle contains: createServerReference("40247ba4...", d.callServer, ..., "submitInquiry")<br/>Exposes 5 form fields: fullName, email, company, industry, message
 
-    Note over Action,Backend: Phase 3: Server-Side Execution (Unverified Boundary)
-    Action-)Backend: Internal persistence / email dispatch (Unobservable)
-    Note over Backend: Exact internal datastore, CRM integration,<br/>or email service cannot be confirmed from public observation.
-    Backend--)Action: Internal status returned
+    Note over User,Edge: Phase 3: Next.js Server Action RPC Pattern (Deliberately NOT Invoked)
+    Note over User,Edge: Assessment protocol boundary: Zero form submissions were dispatched.<br/>Transport mechanism per Next.js App Router specification:<br/>POST /contact (multipart/form-data) with Next-Action: 40247ba4...<br/>No public REST endpoint exists (e.g., /api/contact does not exist).
+    User-->>Edge: [Uninvoked] POST /contact (multipart/form-data)
+    Edge-->>NextApp: [Uninvoked] Forward RPC payload to Serverless Function
+    NextApp-->>Action: [Uninvoked] Execute submitInquiry(formData)
 
-    Note over Action,User: Phase 4: Response Streaming (Observed)
-    Action-->>NextApp: Return status { success: boolean }
-    NextApp-->>Edge: React Server Component streaming payload
-    Edge-->>User: Client state updated (Render success animation or error banner)
+    Note over Action,Backend: Phase 4: Server-Side Execution & Persistence (Unverified Boundary)
+    Note over Backend: Server-side execution, CRM integration, database persistence,<br/>and transactional email delivery cannot be confirmed from public observation.
+    Action--)Backend: [Unverified] Internal persistence / email dispatch
+
+    Note over Action,User: Phase 5: Response Streaming (Architectural Specification — Not Captured)
+    Note over Action,User: Live response payload was not observed because POST was not invoked.<br/>Next.js App Router specification returns RSC streaming state: { success: boolean }.
+    Action-->>NextApp: [Uninvoked] Return status
+    NextApp-->>Edge: [Uninvoked] RSC streaming payload
+    Edge-->>User: [Uninvoked] Client state updated
 ```
 
 - **Source File:** [`observed-request-flow.mmd`](./observed-request-flow.mmd)
@@ -59,7 +61,7 @@ graph TB
     subgraph Gateway_Layer ["2. API Gateway & Middleware Pipeline"]
         Gateway["Reverse Proxy & Gateway<br/>• Correlation ID Middleware (x-request-id)<br/>• Strict CORS Origin Whitelist"]
         RateLimit["Rate Limiting Middleware<br/>• Fixed-Window Atomic Lua Counter<br/>• RFC 9333 Headers (Limit, Remaining, Reset)<br/>• Process-Local In-Memory Fallback"]
-        AuthGuard["Authentication & Authorization Guard<br/>• Timing-Safe JWT Verification (jose HS256)<br/>• 60s Clock-Skew Tolerance<br/>• RBAC Middleware (requireRoles)"]
+        AuthGuard["Authentication & Authorization Guard<br/>• Cryptographic JWT Verification (jose HS256)<br/>• 60s Clock-Skew Tolerance<br/>• RBAC Middleware (requireRoles)"]
     end
 
     subgraph App_Layer ["3. Application Services Tier (Node.js / Express / NestJS)"]
@@ -70,7 +72,7 @@ graph TB
     end
 
     subgraph Cache_Queue ["4. Cache & Async Worker Tier"]
-        Redis[("Redis Cluster<br/>• Atomic rate limit counters<br/>• Session revocation store<br/>• Read-through query cache")]
+        Redis[("Redis Cluster<br/>• Atomic rate limit counters\n• Session revocation store\n• Read-through query cache")]
         BullMQ["BullMQ / Message Queue<br/>• Asynchronous email & webhook queuing<br/>• Retry policies & dead-letter queues"]
         Workers["Background Async Workers<br/>• Transactional email dispatch<br/>• AI agent orchestration & webhooks"]
     end
@@ -91,7 +93,8 @@ graph TB
     Client -->|"HTTPS / TLS 1.3"| EdgeWAF
     EdgeWAF --> Gateway
     Gateway --> RateLimit
-    RateLimit --> AuthGuard
+    RateLimit -->|"Public routes (POST inquiries)"| Controller
+    RateLimit -->|"Protected routes (GET inquiries)"| AuthGuard
     AuthGuard --> Controller
     Controller --> Validation
     Validation --> Service
@@ -106,11 +109,6 @@ graph TB
     Repository --> PgBouncer
     PgBouncer --> Postgres
     Postgres -.->|"streaming replication"| Replica
-
-    %% Observability taps
-    Controller -.-> Logging
-    Service -.-> Sentry
-    Gateway -.-> Metrics
 ```
 
 - **Source File:** [`recommended-architecture.mmd`](./recommended-architecture.mmd)
@@ -119,7 +117,7 @@ graph TB
 
 ## 3. Security & Validation Request Processing Flow
 
-> **Context:** Step-by-step lifecycle of a secure backend mutation request, detailing defense-in-depth enforcement from edge rate limiting through authentication, role checks, validation, business execution, and centralized error handling.
+> **Context:** Step-by-step lifecycle of API requests aligned with [`recommendations/api-example.ts`](../recommendations/api-example.ts). Inquiry creation (`POST /api/v1/inquiries`) is public, rate-limited, and schema-validated; inquiry listing and retrieval (`GET /api/v1/inquiries`) require cryptographic JWT verification and RBAC authorization.
 
 ```mermaid
 sequenceDiagram
@@ -128,58 +126,85 @@ sequenceDiagram
     actor Client as API Client / Consumer
     participant Gateway as API Gateway / Router
     participant RL as Rate Limiter (Redis Lua)
-    participant Auth as JWT Middleware (jose)
+    participant Auth as JWT Auth Guard (jose HS256)
     participant RBAC as Role Guard (requireRoles)
     participant Val as Input Validator (Zod)
-    participant Svc as Business Service Layer
+    participant Svc as Inquiry Service & DB Layer
     participant Err as Centralized Error Handler
 
-    Client->>Gateway: POST /api/v1/inquiries (Bearer Token + JSON Payload)
-    Gateway->>Gateway: Inject x-request-id & resolve client IP
+    %% ─────────────────────────────────────────────────────────────────────────────
+    %% Branch 1: Public Inquiry Submission
+    %% ─────────────────────────────────────────────────────────────────────────────
+    Note over Client,Gateway: Route 1: Public Inquiry Submission (POST /api/v1/inquiries)
+    Client->>Gateway: POST /api/v1/inquiries (JSON payload — No Auth Token Required)
+    Gateway->>Gateway: Inject correlation ID (x-request-id) & resolve client IP
+
+    Note over Gateway,RL: 1. Perimeter IP Rate Limiting (Public Endpoint)
+    Gateway->>RL: Check rate threshold for client IP
+    alt IP Limit Exceeded
+        RL-->>Client: 429 Too Many Requests (RateLimit-Limit, Remaining, Reset, Retry-After)
+    else Within Rate Limit
+        RL->>Val: Forward directly to validation (Bypasses Auth & RBAC)
+
+        Note over Val,Val: 2. Zero-Trust Input Validation (CreateInquirySchema)
+        Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name
+        alt Validation Fails or Honeypot Triggered
+            Val-->>Client: 400 Bad Request (Field-level validation error envelope)
+        else Validation Passes
+            Val->>Svc: Invoke inquiryService.createInquiry(dto, clientIp)
+            alt Database Failure / Constraint Violation
+                Svc->>Err: Bubble error to centralized handler
+                Err->>Err: Intercept error, mask DB internals (Prisma P-codes), log JSON
+                Err-->>Client: 500 Internal Server Error (Sanitized envelope)
+            else Successful Persistence
+                Svc-->>Client: 201 Created ({ success: true, data: { id, status: "PENDING" } })
+            end
+        end
+    end
+
+    %% ─────────────────────────────────────────────────────────────────────────────
+    %% Branch 2: Protected Admin/Engineer Queries
+    %% ─────────────────────────────────────────────────────────────────────────────
+    Note over Client,Gateway: Route 2: Protected Inquiries Query (GET /api/v1/inquiries)
+    Client->>Gateway: GET /api/v1/inquiries (Header: Authorization: Bearer <JWT>)
+    Gateway->>Gateway: Inject correlation ID (x-request-id)
 
     Note over Gateway,RL: 1. Rate Limiting Check
-    Gateway->>RL: Check rate threshold for client IP
-    alt Limit Exceeded (Over threshold)
-        RL-->>Client: 429 Too Many Requests (RateLimit-Reset, Retry-After per RFC 6585/9333)
-    else Within Limit
+    Gateway->>RL: Check caller threshold
+    alt Rate Limit Exceeded
+        RL-->>Client: 429 Too Many Requests
+    else Within Rate Limit
         RL->>Auth: Pass request forward
 
-        Note over RL,Auth: 2. Authentication & Integrity Check
+        Note over RL,Auth: 2. Cryptographic JWT Signature Verification
         Auth->>Auth: Verify JWT signature (HS256 allowlist, 32+ byte secret)
         Auth->>Auth: Validate claims: exp, iss, aud, sub, roles
         Auth->>Auth: Check iat against current time (60s clock-skew tolerance)
-        Auth->>Auth: Query session revocation store in Redis
-        alt Token Expired / Forged / Revoked
-            Auth-->>Client: 401 Unauthorized (INVALID_TOKEN or SESSION_REVOKED)
+        Auth->>Auth: Query Redis session revocation store
+        alt Token Expired / Forged / Missing exp / Future iat
+            Auth-->>Client: 401 Unauthorized (INVALID_TOKEN)
+        else Session Revoked
+            Auth-->>Client: 401 Unauthorized (SESSION_REVOKED)
         else Redis Revocation Infrastructure Down
             Auth-->>Client: 503 Service Unavailable (REVOCATION_SERVICE_UNAVAILABLE)
         else Token Authenticated
             Auth->>RBAC: Attach req.user context and forward
 
-            Note over Auth,RBAC: 3. Role-Based Access Control (RBAC)
-            RBAC->>RBAC: Verify req.user.roles contains permitted role(s)
-            alt Lacks Required Role
+            Note over Auth,RBAC: 3. Role-Based Access Control (RBAC Guard)
+            RBAC->>RBAC: Verify req.user.roles includes 'ADMIN' or 'ENGINEER'
+            alt Lacks Permitted Role
                 RBAC-->>Client: 403 Forbidden (FORBIDDEN)
             else Role Authorized
-                RBAC->>Val: Forward to route controller
+                RBAC->>Val: Forward query parameters
 
-                Note over RBAC,Val: 4. Zero-Trust Input Validation
-                Val->>Val: Execute Zod schema validation (safeParseAsync)
-                Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name
-                alt Input Invalid or Honeypot Triggered
-                    Val-->>Client: 400 Bad Request (Field-level validation error envelope)
-                else Input Validated
-                    Val->>Svc: Invoke business service with typed DTO
-
-                    Note over Val,Svc: 5. Business Logic & Persistence
-                    Svc->>Svc: Execute domain operations & database transactions
-                    alt Unhandled Exception / Database Constraint Error
-                        Svc->>Err: Bubble error to centralized handler
-                        Err->>Err: Intercept error, mask DB internals (Prisma P-code), log JSON
-                        Err-->>Client: 500 Internal Server Error (Sanitized error envelope)
-                    else Successful Execution
-                        Svc-->>Client: 201 Created (Standardized ApiResponse envelope)
-                    end
+                Note over RBAC,Val: 4. Query Schema Validation (InquiryQuerySchema)
+                Val->>Val: Validate page, limit, status, industry filters
+                alt Query Parameters Invalid
+                    Val-->>Client: 400 Bad Request
+                else Query Valid
+                    Val->>Svc: Invoke inquiryService.getInquiries(query)
+                    Svc->>Svc: Query read-through cache (Redis) & PostgreSQL
+                    Svc-->>Client: 200 OK ({ success: true, data: [...], meta: { page, total } })
                 end
             end
         end

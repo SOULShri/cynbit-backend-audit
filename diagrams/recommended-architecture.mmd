@@ -11,7 +11,7 @@ graph TB
     subgraph Gateway_Layer ["2. API Gateway & Middleware Pipeline"]
         Gateway["Reverse Proxy & Gateway\n• Correlation ID Middleware (x-request-id)\n• Strict CORS Origin Whitelist"]
         RateLimit["Rate Limiting Middleware\n• Fixed-Window Atomic Lua Counter\n• RFC 9333 Headers (Limit, Remaining, Reset)\n• Process-Local In-Memory Fallback"]
-        AuthGuard["Authentication & Authorization Guard\n• Timing-Safe JWT Verification (jose HS256)\n• 60s Clock-Skew Tolerance\n• RBAC Middleware (requireRoles)"]
+        AuthGuard["Authentication & Authorization Guard\n• Cryptographic JWT Verification (jose HS256)\n• 60s Clock-Skew Tolerance\n• RBAC Middleware (requireRoles)"]
     end
 
     subgraph App_Layer ["3. Application Services Tier (Node.js / Express / NestJS)"]
@@ -43,7 +43,8 @@ graph TB
     Client -->|"HTTPS / TLS 1.3"| EdgeWAF
     EdgeWAF --> Gateway
     Gateway --> RateLimit
-    RateLimit --> AuthGuard
+    RateLimit -->|"Public routes (POST inquiries)"| Controller
+    RateLimit -->|"Protected routes (GET inquiries)"| AuthGuard
     AuthGuard --> Controller
     Controller --> Validation
     Validation --> Service
@@ -58,8 +59,3 @@ graph TB
     Repository --> PgBouncer
     PgBouncer --> Postgres
     Postgres -.->|"streaming replication"| Replica
-
-    %% Observability taps
-    Controller -.-> Logging
-    Service -.-> Sentry
-    Gateway -.-> Metrics

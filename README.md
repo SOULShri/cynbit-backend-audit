@@ -17,7 +17,7 @@ If you have 2–5 minutes to evaluate this audit, start here:
 | **Performance Profile** | [`docs/05-performance-findings.md`](./docs/05-performance-findings.md) | Edge cache hit latencies (49ms–131ms) vs. dynamic SSR compute latencies (780ms–1576ms). |
 | **Target Architecture** | [`docs/06-recommendations.md`](./docs/06-recommendations.md) | Decoupled Node.js backend blueprint with Controller-Service-Repository pattern. |
 | **Code Implementations** | [`recommendations/`](./recommendations/) | TypeScript modules: atomic Redis Lua limiter, JWT verification with clock skew, Zod schemas. |
-| **Test Evidence** | [`TEST-REPORT.md`](./TEST-REPORT.md) | Verified test suite execution output (54 passed tests across 5 test suites). |
+| **Test Evidence** | [`TEST-REPORT.md`](./TEST-REPORT.md) | Verified test suite execution output (57 passed tests across 5 test suites). |
 
 ---
 
@@ -33,7 +33,7 @@ The goal of this audit is to evaluate `cynbit.in` from a backend engineering per
 - **Inspection Protocol:** 100% passive HTTP header inspection, TLS handshake analysis, and client-side JavaScript bundle reverse-engineering.
 - **Safety Boundaries:**
   - Zero vulnerability exploitation or fuzzing.
-  - Zero test submissions to the contact form Server Action (`submitInquiry`).
+  - Zero test submissions to the contact form Server Action (`submitInquiry`); form submission was deliberately uninvoked.
   - Zero automated vulnerability scanning or denial-of-service traffic.
   - Subdomains (`portal.cynbit.in`) were not probed beyond confirming the HTTP 307 redirect boundary.
 
@@ -58,19 +58,19 @@ cynbit-backend-audit/
 │   └── 06-recommendations.md           # Proposed decoupled backend architecture
 ├── recommendations/                    # TypeScript reference implementations
 │   ├── README.md                       # Module descriptions and architectural context
-│   ├── auth-middleware.ts              # Timing-safe JWT auth, RBAC, and clock-skew tolerance
+│   ├── auth-middleware.ts              # Cryptographic JWT signature verification, RBAC, and clock-skew tolerance
 │   ├── rate-limiter.ts                 # Atomic Redis Lua fixed-window limiter & RFC 9333 headers
 │   ├── api-example.ts                  # Express router, proxy trust, and correlation IDs
 │   ├── validation-example.ts           # Zod schema validation with Unicode & honeypot support
 │   ├── error-handler.ts                # Centralized error handler and database error masking
-│   └── database-example.ts             # Prisma ORM repository pattern and cache invalidation
+│   └── database-example.ts             # Prisma ORM repository pattern and Redis cache adapters
 ├── tests/                              # Automated test suites
 │   ├── README.md                       # Test matrix, boundaries, and execution guide
 │   ├── auth-middleware.test.ts         # 14 tests covering JWT verification, clock skew, and RBAC
 │   ├── rate-limiter.test.ts            # 12 tests covering thresholds, PTTL, and adapters
 │   ├── validation.test.ts              # 14 tests covering Zod schemas and bot honeypot
 │   ├── error-handler.test.ts           # 8 tests covering error translation and masking
-│   └── database.test.ts                # 6 tests covering repository queries and caching
+│   └── database.test.ts                # 9 tests covering repository queries, caching, and Redis adapters
 └── diagrams/                           # Visual architecture models & interactive viewer
     ├── README.md                       # Visual diagram showcase with native GitHub Mermaid rendering
     ├── index.html                      # Standalone interactive visualizer (pan, zoom, tabs, theme toggle)
@@ -85,7 +85,7 @@ cynbit-backend-audit/
 
 ### Observed Infrastructure
 - **Framework & Runtime:** Next.js App Router (React Server Components) hosted on the Vercel Edge Network, terminating at the Mumbai POP (`bom1`).
-- **Endpoint Surface:** No generic RESTful or GraphQL endpoints under `/api`. Form submissions use internal React Server Action RPC (`submitInquiry`, ID: `40247ba4...`).
+- **Endpoint Surface:** No generic RESTful or GraphQL endpoints under `/api`. Form submissions use internal React Server Action RPC (`submitInquiry`, ID: `40247ba4...` identified in client JavaScript bundle; form submission was uninvoked).
 - **Administrative Boundary:** `/portal` redirects externally via HTTP 307 to `https://portal.cynbit.in/`, confirming separation of marketing assets from application portals.
 
 ### Security Posture

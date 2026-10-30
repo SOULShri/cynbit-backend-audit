@@ -36,7 +36,10 @@ graph TB
         PgBouncer["Connection Pooler (PgBouncer)"]
         Postgres[("PostgreSQL 16 (Primary OLTP)")]
     end
-    Client --> EdgeWAF --> Gateway --> RateLimit --> AuthGuard --> Controller --> Validation --> Service --> Repository
+    Client --> EdgeWAF --> Gateway --> RateLimit
+    RateLimit -->|"Public routes"| Controller
+    RateLimit -->|"Protected routes"| AuthGuard --> Controller
+    Controller --> Validation --> Service --> Repository
     RateLimit -.-> Redis
     AuthGuard -.-> Redis
     Repository -.-> Redis
@@ -60,7 +63,7 @@ graph TB
 - **Adapter Layer:** Includes dedicated adapters for `ioredis` and `node-redis` (v4+), ensuring library-specific command parameters and return shapes are handled cleanly.
 - **Fallback Policy:** If Redis is unreachable, falls back to a process-local in-memory store to maintain service availability. Operators are alerted via `X-RateLimit-Fallback: in-process`.
 
-### 2.3 Timing-Safe JWT Authentication & RBAC Guard
+### 2.3 Cryptographic JWT Signature Verification & RBAC Guard
 - **Standard Library:** Uses `jose` with an explicit algorithm allow-list (`HS256` only), mitigating algorithm confusion attacks (`alg: none`).
 - **Claim Enforcement:** Requires `sub`, `email`, `sid`, and `roles`.
 - **Clock-Skew & Lifetime Rules:** Enforces a 60-second clock-skew tolerance on `iat` to reject future-issued tokens, requires `exp`, and caps maximum lifetime to 24 hours.
@@ -77,3 +80,4 @@ graph TB
 - Managed PostgreSQL 16 with integrated connection pooling (PgBouncer) to prevent connection exhaustion.
 - Primary keys using UUIDv4.
 - Explicit cache invalidation (`DEL cynbit:inquiry:{id}`) on status updates to prevent serving stale read-through data.
+- **Unified Cache Adapters:** Explicit adapter layer (`createIoRedisCacheAdapter` / `createNodeRedisCacheAdapter`) bridging the API syntax differences between `ioredis` (`.setex`) and `node-redis` (`.setEx`).

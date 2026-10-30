@@ -173,13 +173,13 @@
       background: none;
       border: none;
       color: var(--text);
-      width: 34px;
-      height: 34px;
+      width: 36px;
+      height: 36px;
       border-radius: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       cursor: pointer;
       transition: background 0.15s;
     }
@@ -252,29 +252,98 @@
     .bullet-list strong {
       color: var(--text);
     }
+
+    /* ── Responsive Mobile Styles ────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      body {
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px;
+      }
+
+      .header-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .tabs {
+        padding: 0 16px;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .tab-btn {
+        padding: 10px 12px;
+        font-size: 0.82rem;
+        flex-shrink: 0;
+      }
+
+      main {
+        flex-direction: column;
+        overflow: visible;
+        flex: none;
+      }
+
+      #viewport {
+        height: 60vh;
+        min-height: 400px;
+        width: 100%;
+      }
+
+      .sidebar {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        overflow-y: visible;
+        padding: 20px 16px 40px;
+      }
+
+      .controls-overlay {
+        flex-direction: row;
+        bottom: 12px;
+        right: 12px;
+      }
+
+      .control-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 1.25rem;
+      }
+    }
   </style>
 </head>
 <body>
+
   <header>
     <div class="title-area">
       <h1>Cynbit Backend Architecture Visualizer</h1>
-      <p>Interactive Architecture & Request Lifecycle Models</p>
+      <p>Interactive vector models comparing observed infrastructure against recommended decoupled patterns.</p>
     </div>
     <div class="header-actions">
       <button class="btn" id="theme-toggle">🌓 Toggle Theme</button>
-      <a class="btn" href="https://github.com/SOULShri/cynbit-backend-audit" target="_blank">GitHub Repository ↗</a>
+      <a href="../README.md" class="btn">← Back to Overview</a>
     </div>
   </header>
 
   <nav class="tabs">
-    <button class="tab-btn active" data-diagram="observed">1. Observed Request Flow</button>
-    <button class="tab-btn" data-diagram="recommended">2. Recommended Architecture</button>
-    <button class="tab-btn" data-diagram="security">3. Security Request Lifecycle</button>
+    <button class="tab-btn active" data-diagram="observed">1. Observed Request Flow (Next.js RPC)</button>
+    <button class="tab-btn" data-diagram="recommended">2. Recommended Target Architecture</button>
+    <button class="tab-btn" data-diagram="security">3. Security & Validation Flow</button>
   </nav>
 
   <main>
     <div id="viewport">
-      <div id="mermaid-container"></div>
+      <div id="mermaid-container">
+        <!-- Injected via JavaScript -->
+      </div>
       <div class="controls-overlay">
         <button class="control-btn" id="btn-zoom-in" title="Zoom In">+</button>
         <button class="control-btn" id="btn-zoom-out" title="Zoom Out">−</button>
@@ -290,135 +359,208 @@
   </main>
 
   <script>
+    // Authoritative diagram configurations.
+    // The source .mmd files are the single source of truth.
+    // When served over HTTP/S, diagrams are loaded live from the .mmd files.
+    // An exact 1:1 fallback string ensures offline file:// usage works seamlessly.
     const diagrams = {
       observed: {
+        file: "./observed-request-flow.mmd",
         badgeClass: "badge-observed",
-        badgeText: "Empirical Observation",
-        title: "Observed Request Flow",
-        description: "Captures the client-to-server RPC protocol on the /contact route verified through passive inspection of public JavaScript bundles. Server-side processing beyond the Next.js Server Action is unobservable from the outside.",
+        badgeText: "Observed Client Action",
+        title: "Observed Request Flow (Server Action RPC)",
+        description: "Captures the client-to-server RPC interaction on the /contact route identified from public JavaScript bundle inspection. Form submission was deliberately NOT invoked to respect ethical audit boundaries.",
         bullets: [
-          "<strong>Transport:</strong> Direct HTTPS POST to /contact with Next-Action RPC header.",
-          "<strong>No Public REST API:</strong> The contact form does NOT communicate with a traditional /api/contact endpoint.",
-          "<strong>Client Bundle:</strong> Action ID 40247ba4... extracted from contact/page-*.js.",
-          "<strong>Edge POP:</strong> Terminated at Vercel's Mumbai node (bom1) with sub-50ms ISR delivery.",
-          "<strong>Unverified Boundary:</strong> Database persistence and email dispatch are unconfirmed."
+          "<strong>Action Identification:</strong> Server Action binding identified in client bundle <code>contact/page-*.js</code> (ID: <code>40247ba4...</code>).",
+          "<strong>Form Submission Deliberately Uninvoked:</strong> Zero form submissions were dispatched. POST /contact was not transmitted.",
+          "<strong>Backend Execution Unverified:</strong> Internal database persistence, CRM synchronisation, and email dispatch could not be observed from public endpoints.",
+          "<strong>No Public REST Route:</strong> Form mutations bypass traditional /api/contact endpoints, using React Server Action RPC.",
+          "<strong>Edge Termination:</strong> Document pre-rendered via ISR and terminated at Vercel Mumbai edge node (bom1) in 49ms."
         ],
-        code: `sequenceDiagram
+        fallbackCode: `sequenceDiagram
     autonumber
     actor User as Client Browser
     participant Edge as Vercel Edge Network (Mumbai POP)
     participant NextApp as Next.js App Router
-    participant Action as submitInquiry Server Action (ID: 40247ba4...)
+    participant Action as submitInquiry Action (ID: 40247ba4...)
     participant Backend as Unverified Backend Services (CRM / Email / DB)
 
+    Note over User,Edge: Phase 1: Document Retrieval (Directly Observed)
     User->>Edge: GET /contact (HTTPS / TLS 1.3)
     Edge-->>User: 200 OK (ISR Pre-rendered HTML, 49ms, 64 KB)
-    Note over User: User inputs: fullName, email, company, industry, message
-    User->>Edge: POST /contact (multipart/form-data)
-    Note over User,Edge: Header: Next-Action: 40247ba4465344b3386595bab4303317cdcce907df
-    Edge->>NextApp: Forward RPC payload to Serverless Function
-    NextApp->>Action: Execute submitInquiry(formData)
-    Action-)Backend: Internal persistence / email dispatch (Unobservable)
-    Backend--)Action: Internal status returned
-    Action-->>NextApp: Return status { success: boolean }
-    NextApp-->>Edge: React Server Component streaming payload
-    Edge-->>User: Client state updated (Render success or error banner)`
+
+    Note over User,Action: Phase 2: Action Registration in Client Bundle (Directly Observed)
+    Note over User: Form loads client bundle: contact/page-a581c8d7462124d9.js<br/>Bundle contains: createServerReference("40247ba4...", d.callServer, ..., "submitInquiry")<br/>Exposes 5 form fields: fullName, email, company, industry, message
+
+    Note over User,Edge: Phase 3: Next.js Server Action RPC Pattern (Deliberately NOT Invoked)
+    Note over User,Edge: Assessment protocol boundary: Zero form submissions were dispatched.<br/>Transport mechanism per Next.js App Router specification:<br/>POST /contact (multipart/form-data) with Next-Action: 40247ba4...<br/>No public REST endpoint exists (e.g., /api/contact does not exist).
+    User-->>Edge: [Uninvoked] POST /contact (multipart/form-data)
+    Edge-->>NextApp: [Uninvoked] Forward RPC payload to Serverless Function
+    NextApp-->>Action: [Uninvoked] Execute submitInquiry(formData)
+
+    Note over Action,Backend: Phase 4: Server-Side Execution & Persistence (Unverified Boundary)
+    Note over Backend: Server-side execution, CRM integration, database persistence,<br/>and transactional email delivery cannot be confirmed from public observation.
+    Action--)Backend: [Unverified] Internal persistence / email dispatch
+
+    Note over Action,User: Phase 5: Response Streaming (Architectural Specification — Not Captured)
+    Note over Action,User: Live response payload was not observed because POST was not invoked.<br/>Next.js App Router specification returns RSC streaming state: { success: boolean }.
+    Action-->>NextApp: [Uninvoked] Return status
+    NextApp-->>Edge: [Uninvoked] RSC streaming payload
+    Edge-->>User: [Uninvoked] Client state updated`
       },
 
       recommended: {
+        file: "./recommended-architecture.mmd",
         badgeClass: "badge-proposed",
         badgeText: "Recommended Target Architecture",
         title: "Decoupled High-Throughput Topology",
         description: "A target architectural blueprint separating presentation, gateway routing, application domains, distributed caching, and persistence into discrete layers.",
         bullets: [
-          "<strong>Edge & Ingress:</strong> Edge WAF, bot detection, and strict security header injection.",
-          "<strong>API Gateway:</strong> Centralized correlation IDs (x-request-id) and strict CORS whitelisting.",
-          "<strong>Application Services:</strong> Clean separation using Controller-Service-Repository pattern.",
-          "<strong>Distributed Rate Limiting:</strong> Redis-backed fixed-window counter with atomic Lua execution.",
-          "<strong>Data Layer:</strong> PostgreSQL 16 with PgBouncer connection pooling and read-through caching."
+          "<strong>Edge & Ingress:</strong> Edge CDN, WAF, bot detection, and strict security headers (CSP, HSTS, X-Frame-Options).",
+          "<strong>API Gateway:</strong> Correlation ID injection (x-request-id) and strict CORS origin whitelisting.",
+          "<strong>Routing Separation:</strong> Public mutation routes (POST /inquiries) bypass auth; admin queries enforce JWT and RBAC.",
+          "<strong>Distributed Rate Limiting:</strong> Redis-backed fixed-window counter with atomic Lua execution and RFC 9333 headers.",
+          "<strong>Cache & Persistence:</strong> Read-through caching with explicit ioredis/node-redis adapters, PgBouncer, and PostgreSQL 16."
         ],
-        code: `graph TB
+        fallbackCode: `graph TB
     subgraph Client_Layer ["1. Client & Ingress Tier"]
-        Client["Web / Mobile Clients"]
-        EdgeWAF["Edge CDN & WAF (Cloudflare / Vercel Edge)<br/>• Edge Rate Limiting & Bot Filtering<br/>• Strict Security Headers (CSP, HSTS)"]
+        Client["Web / Mobile / Third-Party Clients"]
+        EdgeWAF["Edge CDN & WAF (e.g., Cloudflare / Vercel Edge)<br/>• Edge Rate Limiting & Bot Filtering<br/>• Strict Security Header Injection (CSP, HSTS, X-Frame-Options)"]
     end
     subgraph Gateway_Layer ["2. API Gateway & Middleware Pipeline"]
-        Gateway["Reverse Proxy & Gateway<br/>• Correlation ID (x-request-id)<br/>• Strict CORS Whitelist"]
-        RateLimit["Rate Limiting Middleware<br/>• Atomic Lua Counter (PTTL)<br/>• RFC 9333 Headers"]
-        AuthGuard["JWT & RBAC Guard<br/>• jose HS256 Verification<br/>• 60s Clock-Skew Tolerance"]
+        Gateway["Reverse Proxy & Gateway<br/>• Correlation ID Middleware (x-request-id)<br/>• Strict CORS Origin Whitelist"]
+        RateLimit["Rate Limiting Middleware<br/>• Fixed-Window Atomic Lua Counter<br/>• RFC 9333 Headers (Limit, Remaining, Reset)<br/>• Process-Local In-Memory Fallback"]
+        AuthGuard["Authentication & Authorization Guard<br/>• Cryptographic JWT Verification (jose HS256)<br/>• 60s Clock-Skew Tolerance<br/>• RBAC Middleware (requireRoles)"]
     end
-    subgraph App_Layer ["3. Application Services Tier"]
-        Controller["Inquiry Controller<br/>• Standardized ApiResponse envelope"]
-        Validation["Zod Validation Layer<br/>• Unicode name support<br/>• Honeypot trapping"]
-        Service["Inquiry Business Service<br/>• Domain logic & async job dispatch"]
-        Repository["Inquiry Repository<br/>• Prisma ORM query builder"]
+    subgraph App_Layer ["3. Application Services Tier (Node.js / Express / NestJS)"]
+        Controller["Inquiry Controller<br/>• DTO extraction & status orchestration<br/>• Standardized ApiResponse envelope"]
+        Validation["Zod Validation Layer<br/>• Runtime schema parsing<br/>• Unicode name support<br/>• Anti-bot honeypot trapping"]
+        Service["Inquiry Business Service<br/>• Domain business logic & transactions<br/>• Async worker job dispatching"]
+        Repository["Inquiry Repository<br/>• Typed Prisma ORM query builder<br/>• Read-through cache coordination"]
     end
     subgraph Cache_Queue ["4. Cache & Async Worker Tier"]
-        Redis[("Redis Cluster<br/>• Rate limits & session revocation<br/>• Read-through cache")]
-        BullMQ["BullMQ / Message Queue<br/>• Transactional email queue"]
-        Workers["Background Workers<br/>• Email & webhook dispatch"]
+        Redis[("Redis Cluster<br/>• Atomic rate limit counters<br/>• Session revocation store<br/>• Read-through query cache")]
+        BullMQ["BullMQ / Message Queue<br/>• Asynchronous email & webhook queuing<br/>• Retry policies & dead-letter queues"]
+        Workers["Background Async Workers<br/>• Transactional email dispatch<br/>• AI agent orchestration & webhooks"]
     end
     subgraph Persistence_Layer ["5. Data Persistence Tier"]
-        PgBouncer["Connection Pooler (PgBouncer)"]
-        Postgres[("PostgreSQL 16 (Primary OLTP)")]
+        PgBouncer["Connection Pooler (PgBouncer)<br/>• Mitigates connection exhaustion"]
+        Postgres[("PostgreSQL 16 (Primary OLTP)<br/>• Relational tables & indexes<br/>• Parameterized queries (SQLi immune)")]
+        Replica[("Read Replica (Optional)<br/>• Dedicated analytics & dashboard reads")]
     end
-    Client --> EdgeWAF --> Gateway --> RateLimit --> AuthGuard --> Controller --> Validation --> Service --> Repository
-    RateLimit -.-> Redis
-    AuthGuard -.-> Redis
-    Repository -.-> Redis
-    Service -.-> BullMQ --> Workers
-    Repository --> PgBouncer --> Postgres`
+    subgraph Observability_Tier ["6. Observability & Monitoring"]
+        Logging["Structured JSON Logger (Pino)<br/>• Unified logs with correlation requestId"]
+        Sentry["Error Tracking & Alerting (Sentry)<br/>• Intercepts uncaught exceptions"]
+        Metrics["Prometheus / OpenTelemetry Metrics<br/>• Real-time latency, throughput, and error rates"]
+    end
+    Client -->|"HTTPS / TLS 1.3"| EdgeWAF
+    EdgeWAF --> Gateway
+    Gateway --> RateLimit
+    RateLimit -->|"Public routes (POST inquiries)"| Controller
+    RateLimit -->|"Protected routes (GET inquiries)"| AuthGuard
+    AuthGuard --> Controller
+    Controller --> Validation
+    Validation --> Service
+    Service --> Repository
+    RateLimit -.->|"atomic PTTL check"| Redis
+    AuthGuard -.->|"session revocation check"| Redis
+    Repository -.->|"read-through cache / del"| Redis
+    Service -.->|"enqueue async tasks"| BullMQ
+    BullMQ --> Workers
+    Repository --> PgBouncer
+    PgBouncer --> Postgres
+    Postgres -.->|"streaming replication"| Replica`
       },
 
       security: {
+        file: "./security-request-flow.mmd",
         badgeClass: "badge-security",
-        badgeText: "Security & Validation Lifecycle",
-        title: "Request Processing Pipeline",
-        description: "Details defense-in-depth enforcement from the perimeter rate limiter through cryptographic token validation, role authorization, input sanitization, and database error masking.",
+        badgeText: "Security & Access Control",
+        title: "Request Processing & Defense-in-Depth Pipeline",
+        description: "Details end-to-end request processing aligned with api-example.ts. Inquiry creation is public and rate-limited; inquiry queries enforce JWT signature verification and RBAC.",
         bullets: [
-          "<strong>1. Throttling:</strong> Request checked against Redis counter. HTTP 429 returned if exceeded.",
-          "<strong>2. Authentication:</strong> Timing-safe JWT check (HS256 allowlist, 32+ byte key, 60s clock skew).",
-          "<strong>3. Fault Isolation:</strong> Redis revocation outage returns HTTP 503 rather than misreporting 401.",
-          "<strong>4. Authorization:</strong> Strict RBAC middleware (requireRoles) blocks unauthorized callers (403).",
-          "<strong>5. Input Sanitization:</strong> Zod safeParseAsync strips honeypot spam and validates Unicode names.",
-          "<strong>6. Error Masking:</strong> Centralized handler intercepts database constraints (Prisma P-codes)."
+          "<strong>1. Route Alignment:</strong> Public creation (POST) is rate-limited & validated without requiring auth; query routes (GET) enforce JWT + RBAC.",
+          "<strong>2. Perimeter Rate Limiting:</strong> Atomic Redis Lua counter blocks abusive IPs with HTTP 429 and RFC 9333/6585 headers.",
+          "<strong>3. Zero-Trust Input Validation:</strong> Zod safeParseAsync validates Unicode names, normalizes email, and traps bot honeypots (HTTP 400).",
+          "<strong>4. Cryptographic JWT Verification:</strong> jose HS256 signature verification with 32+ byte secret, exp check, and 60s clock skew tolerance.",
+          "<strong>5. Infrastructure Fault Isolation:</strong> Redis session revocation downtime returns HTTP 503 instead of false 401 credential rejections.",
+          "<strong>6. Role Authorization:</strong> Strict RBAC middleware (requireRoles) restricts inquiry listing to ADMIN or ENGINEER (HTTP 403).",
+          "<strong>7. Database Error Masking:</strong> Centralized handler intercepts database constraints (Prisma P-codes) and logs internal errors with correlation IDs."
         ],
-        code: `sequenceDiagram
+        fallbackCode: `sequenceDiagram
     autonumber
-    actor Client as API Consumer
-    participant Gateway as API Gateway
-    participant RL as Rate Limiter (Redis)
-    participant Auth as JWT Guard (jose)
-    participant RBAC as Role Guard
-    participant Val as Zod Validator
-    participant Svc as Business Service
-    participant Err as Error Handler
+    actor Client as API Client / Consumer
+    participant Gateway as API Gateway / Router
+    participant RL as Rate Limiter (Redis Lua)
+    participant Auth as JWT Auth Guard (jose HS256)
+    participant RBAC as Role Guard (requireRoles)
+    participant Val as Input Validator (Zod)
+    participant Svc as Inquiry Service & DB Layer
+    participant Err as Centralized Error Handler
 
-    Client->>Gateway: POST /api/v1/inquiries (Bearer + JSON)
-    Gateway->>RL: Check IP rate threshold
-    alt Limit Exceeded
-        RL-->>Client: 429 Too Many Requests (RateLimit-Reset, Retry-After)
-    else Within Limit
-        RL->>Auth: Pass request
-        Auth->>Auth: Verify JWT signature & clock-skew
-        alt Redis Revocation Store Down
-            Auth-->>Client: 503 Service Unavailable
-        else Token Valid
-            Auth->>RBAC: Forward req.user
+    Note over Client,Gateway: Route 1: Public Inquiry Submission (POST /api/v1/inquiries)
+    Client->>Gateway: POST /api/v1/inquiries (JSON payload — No Auth Token Required)
+    Gateway->>Gateway: Inject correlation ID (x-request-id) & resolve client IP
+
+    Note over Gateway,RL: 1. Perimeter IP Rate Limiting (Public Endpoint)
+    Gateway->>RL: Check rate threshold for client IP
+    alt IP Limit Exceeded
+        RL-->>Client: 429 Too Many Requests (RateLimit-Limit, Remaining, Reset, Retry-After)
+    else Within Rate Limit
+        RL->>Val: Forward directly to validation (Bypasses Auth & RBAC)
+        Note over Val,Val: 2. Zero-Trust Input Validation (CreateInquirySchema)
+        Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name
+        alt Validation Fails or Honeypot Triggered
+            Val-->>Client: 400 Bad Request (Field-level validation error envelope)
+        else Validation Passes
+            Val->>Svc: Invoke inquiryService.createInquiry(dto, clientIp)
+            alt Database Failure / Constraint Violation
+                Svc->>Err: Bubble error to centralized handler
+                Err->>Err: Intercept error, mask DB internals (Prisma P-codes), log JSON
+                Err-->>Client: 500 Internal Server Error (Sanitized envelope)
+            else Successful Persistence
+                Svc-->>Client: 201 Created ({ success: true, data: { id, status: "PENDING" } })
+            end
+        end
+    end
+
+    Note over Client,Gateway: Route 2: Protected Inquiries Query (GET /api/v1/inquiries)
+    Client->>Gateway: GET /api/v1/inquiries (Header: Authorization: Bearer <JWT>)
+    Gateway->>Gateway: Inject correlation ID (x-request-id)
+
+    Note over Gateway,RL: 1. Rate Limiting Check
+    Gateway->>RL: Check caller threshold
+    alt Rate Limit Exceeded
+        RL-->>Client: 429 Too Many Requests
+    else Within Rate Limit
+        RL->>Auth: Pass request forward
+        Note over RL,Auth: 2. Cryptographic JWT Signature Verification
+        Auth->>Auth: Verify JWT signature (HS256 allowlist, 32+ byte secret)
+        Auth->>Auth: Validate claims: exp, iss, aud, sub, roles
+        Auth->>Auth: Check iat against current time (60s clock-skew tolerance)
+        Auth->>Auth: Query Redis session revocation store
+        alt Token Expired / Forged / Missing exp / Future iat
+            Auth-->>Client: 401 Unauthorized (INVALID_TOKEN)
+        else Session Revoked
+            Auth-->>Client: 401 Unauthorized (SESSION_REVOKED)
+        else Redis Revocation Infrastructure Down
+            Auth-->>Client: 503 Service Unavailable (REVOCATION_SERVICE_UNAVAILABLE)
+        else Token Authenticated
+            Auth->>RBAC: Attach req.user context and forward
+            Note over Auth,RBAC: 3. Role-Based Access Control (RBAC Guard)
+            RBAC->>RBAC: Verify req.user.roles includes 'ADMIN' or 'ENGINEER'
             alt Lacks Permitted Role
-                RBAC-->>Client: 403 Forbidden
-            else Authorized
-                RBAC->>Val: Forward payload
-                alt Validation / Honeypot Fails
+                RBAC-->>Client: 403 Forbidden (FORBIDDEN)
+            else Role Authorized
+                RBAC->>Val: Forward query parameters
+                Note over RBAC,Val: 4. Query Schema Validation (InquiryQuerySchema)
+                Val->>Val: Validate page, limit, status, industry filters
+                alt Query Parameters Invalid
                     Val-->>Client: 400 Bad Request
-                else Valid Input
-                    Val->>Svc: Execute business logic
-                    alt Database Error
-                        Svc->>Err: Bubble error
-                        Err-->>Client: 500 Internal Server Error (Masked)
-                    else Success
-                        Svc-->>Client: 201 Created (ApiResponse)
-                    end
+                else Query Valid
+                    Val->>Svc: Invoke inquiryService.getInquiries(query)
+                    Svc->>Svc: Query read-through cache (Redis) & PostgreSQL
+                    Svc-->>Client: 200 OK ({ success: true, data: [...], meta: { page, total } })
                 end
             end
         end
@@ -440,20 +582,37 @@
       });
     }
 
+    async function loadDiagramCode(key) {
+      const data = diagrams[key];
+      // Live fetch from authoritative .mmd file when running via web server
+      try {
+        const resp = await fetch(data.file);
+        if (resp.ok) {
+          const text = await resp.text();
+          if (text && text.trim().length > 0) {
+            return text;
+          }
+        }
+      } catch (e) {
+        // Fallback for offline / file:// protocol
+      }
+      return data.fallbackCode;
+    }
+
     async function renderDiagram(key) {
       currentDiagramKey = key;
       const data = diagrams[key];
 
-      // Update sidebar
+      // Update sidebar content
       const sidebar = document.getElementById("sidebar-content");
-      sidebar.innerHTML = \`
-        <span class="badge \${data.badgeClass}">\${data.badgeText}</span>
-        <h2>\${data.title}</h2>
-        <p>\${data.description}</p>
+      sidebar.innerHTML = `
+        <span class="badge ${data.badgeClass}">${data.badgeText}</span>
+        <h2>${data.title}</h2>
+        <p>${data.description}</p>
         <ul class="bullet-list">
-          \${data.bullets.map(b => \`<li>\${b}</li>\`).join('')}
+          ${data.bullets.map(b => `<li>${b}</li>`).join('')}
         </ul>
-      \`;
+      `;
 
       // Render mermaid SVG
       const container = document.getElementById("mermaid-container");
@@ -466,7 +625,8 @@
 
       const id = "mermaid-svg-" + Date.now();
       try {
-        const { svg } = await mermaid.render(id, data.code);
+        const code = await loadDiagramCode(key);
+        const { svg } = await mermaid.render(id, code);
         container.innerHTML = svg;
 
         const svgElement = container.querySelector("svg");
@@ -482,11 +642,11 @@
           maxZoom: 8
         });
       } catch (err) {
-        container.innerHTML = \`<div style="color: #ef4444; padding: 20px;">Render Error: \${err.message}</div>\`;
+        container.innerHTML = `<div style="color: #ef4444; padding: 20px;">Render Error: ${err.message}</div>`;
       }
     }
 
-    // Tabs
+    // Tab buttons
     document.querySelectorAll(".tab-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -495,7 +655,7 @@
       });
     });
 
-    // Controls
+    // Viewport controls
     document.getElementById("btn-zoom-in").addEventListener("click", () => panZoomInstance && panZoomInstance.zoomIn());
     document.getElementById("btn-zoom-out").addEventListener("click", () => panZoomInstance && panZoomInstance.zoomOut());
     document.getElementById("btn-reset").addEventListener("click", () => {
@@ -513,7 +673,7 @@
       renderDiagram(currentDiagramKey);
     });
 
-    // Init
+    // Initialize
     initMermaid();
     renderDiagram("observed");
   </script>
