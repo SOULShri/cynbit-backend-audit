@@ -1,0 +1,32 @@
+%% title: Observed Request Flow — Cynbit Contact Form Workflow
+%% description: Visualizes the empirical interaction flow captured via passive network telemetry and client bundle analysis of cynbit.in. Server-side processing beyond the Server Action entrypoint was unobservable and is explicitly marked as unverified.
+
+sequenceDiagram
+    autonumber
+
+    actor User as Client Browser
+    participant Edge as Vercel Edge Network (Mumbai POP)
+    participant NextApp as Next.js App Router
+    participant Action as submitInquiry Server Action (ID: 40247ba4...)
+    participant Backend as Unverified Backend Services (CRM / Email / DB)
+
+    Note over User,Edge: Phase 1: Document Retrieval (Observed)
+    User->>Edge: GET /contact (HTTPS / TLS 1.3)
+    Edge-->>User: 200 OK (ISR Pre-rendered HTML, 49ms, 64 KB)
+    Note over User: Form loads client bundle: contact/page-*.js<br/>User inputs: fullName, email, company, industry, message
+
+    Note over User,Action: Phase 2: Form Submission RPC (Observed Mechanism)
+    User->>Edge: POST /contact (multipart/form-data)
+    Note over User,Edge: Header: Next-Action: 40247ba4465344b3386595bab4303317cdcce907df<br/>Transported via internal React Server Action callServer RPC.<br/>No public REST endpoint exists (e.g., /api/contact does not exist).
+    Edge->>NextApp: Forward RPC payload to Serverless Function
+    NextApp->>Action: Execute submitInquiry(formData)
+
+    Note over Action,Backend: Phase 3: Server-Side Execution (Unverified Boundary)
+    Action-)Backend: Internal persistence / email dispatch (Unobservable)
+    Note over Backend: Exact internal datastore, CRM integration,<br/>or email service cannot be confirmed from public observation.
+    Backend--)Action: Internal status returned
+
+    Note over Action,User: Phase 4: Response Streaming (Observed)
+    Action-->>NextApp: Return status { success: boolean }
+    NextApp-->>Edge: React Server Component streaming payload
+    Edge-->>User: Client state updated (Render success animation or error banner)

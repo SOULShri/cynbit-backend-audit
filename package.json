@@ -1,0 +1,41 @@
+{
+  "name": "cynbit-backend-audit",
+  "version": "2.0.0",
+  "description": "Cynbit Technologies Backend Technical Audit — Reference Implementations",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint recommendations/**/*.ts",
+    "test": "node node_modules/jest/bin/jest.js --runInBand",
+    "test:coverage": "node node_modules/jest/bin/jest.js --coverage --runInBand"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.19.43",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.15",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "jose": "^5.10.0",
+    "zod": "^3.25.76"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests"
+    ],
+    "testMatch": [
+      "**/*.test.ts"
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/recommendations/$1"
+    }
+  }
+}

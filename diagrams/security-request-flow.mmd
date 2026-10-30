@@ -1,0 +1,65 @@
+%% title: Security & Validation Request Processing Flow
+%% description: End-to-end lifecycle of a secure backend mutation request, detailing defense-in-depth enforcement from edge rate limiting through authentication, role checks, validation, business execution, and centralized error handling.
+
+sequenceDiagram
+    autonumber
+
+    actor Client as API Client / Consumer
+    participant Gateway as API Gateway / Router
+    participant RL as Rate Limiter (Redis Lua)
+    participant Auth as JWT Middleware (jose)
+    participant RBAC as Role Guard (requireRoles)
+    participant Val as Input Validator (Zod)
+    participant Svc as Business Service Layer
+    participant Err as Centralized Error Handler
+
+    Client->>Gateway: POST /api/v1/inquiries (Bearer Token + JSON Payload)
+    Gateway->>Gateway: Inject x-request-id & resolve client IP
+
+    Note over Gateway,RL: 1. Rate Limiting Check
+    Gateway->>RL: Check rate threshold for client IP
+    alt Limit Exceeded (Over threshold)
+        RL-->>Client: 429 Too Many Requests (RateLimit-Reset, Retry-After per RFC 6585/9333)
+    else Within Limit
+        RL->>Auth: Pass request forward
+
+        Note over RL,Auth: 2. Authentication & Integrity Check
+        Auth->>Auth: Verify JWT signature (HS256 allowlist, 32+ byte secret)
+        Auth->>Auth: Validate claims: exp, iss, aud, sub, roles
+        Auth->>Auth: Check iat against current time (60s clock-skew tolerance)
+        Auth->>Auth: Query session revocation store in Redis
+        alt Token Expired / Forged / Revoked
+            Auth-->>Client: 401 Unauthorized (INVALID_TOKEN or SESSION_REVOKED)
+        else Redis Revocation Infrastructure Down
+            Auth-->>Client: 503 Service Unavailable (REVOCATION_SERVICE_UNAVAILABLE)
+        else Token Authenticated
+            Auth->>RBAC: Attach req.user context and forward
+
+            Note over Auth,RBAC: 3. Role-Based Access Control (RBAC)
+            RBAC->>RBAC: Verify req.user.roles contains permitted role(s)
+            alt Lacks Required Role
+                RBAC-->>Client: 403 Forbidden (FORBIDDEN)
+            else Role Authorized
+                RBAC->>Val: Forward to route controller
+
+                Note over RBAC,Val: 4. Zero-Trust Input Validation
+                Val->>Val: Execute Zod schema validation (safeParseAsync)
+                Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name (\p{L})
+                alt Input Invalid or Honeypot Triggered
+                    Val-->>Client: 400 Bad Request (Field-level validation error envelope)
+                else Input Validated
+                    Val->>Svc: Invoke business service with typed DTO
+
+                    Note over Val,Svc: 5. Business Logic & Persistence
+                    Svc->>Svc: Execute domain operations & database transactions
+                    alt Unhandled Exception / Database Constraint Error
+                        Svc->>Err: Bubble error to centralized handler
+                        Err->>Err: Intercept error, mask DB internals (Prisma P-code), log JSON
+                        Err-->>Client: 500 Internal Server Error (Sanitized error envelope)
+                    else Successful Execution
+                        Svc-->>Client: 201 Created (Standardized ApiResponse envelope)
+                    end
+                end
+            end
+        end
+    end
