@@ -9,23 +9,27 @@
 
 Passive inspection confirms that Cynbit's primary public web application is built on **Next.js App Router (React 18/19 Server Components)** hosted on **Vercel's global edge network**.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Client Browser
+    participant Edge as Vercel Edge (Mumbai POP)
+    participant NextApp as Next.js App Router
+    participant Action as submitInquiry Action (ID: 40247ba4...)
+    participant Backend as Unverified Backend (CRM / Email / DB)
+
+    User->>Edge: GET /contact (HTTPS / TLS 1.3)
+    Edge-->>User: 200 OK (ISR Pre-rendered HTML, 49ms)
+    User->>Edge: POST /contact (multipart/form-data)
+    Note over User,Edge: Header: Next-Action: 40247ba4465344b3386595bab4303317cdcce907df
+    Edge->>NextApp: Forward RPC to Serverless Function
+    NextApp->>Action: Execute submitInquiry(formData)
+    Action-)Backend: Internal persistence / email (Unverified)
+    Action-->>NextApp: Return { success: boolean }
+    NextApp-->>Edge: RSC streaming response
+    Edge-->>User: Success / error state rendered
 ```
-[ Client Browser ]
-        │  HTTPS (TLS 1.3 / AES-128-GCM)
-        ▼
-[ Vercel Edge POP: bom1 (Mumbai) ]
-        │  Edge Routing / Cache
-        ▼
-[ Next.js App Router (Serverless Execution) ]
-        │
-   ┌────┴───────────────────────────┐
-   ▼                                ▼
-[ Pre-rendered Pages (ISR) ]    [ Server Action RPC ]
-- Home (/)                      - submitInquiry
-- Products (/products)            (Action ID: 40247ba4...)
-- Services (/services)
-- Contact (/contact)
-```
+*(Interactive visual version with zoom/pan available at [`diagrams/index.html`](../diagrams/index.html) and source at [`diagrams/observed-request-flow.mmd`](../diagrams/observed-request-flow.mmd)).*
 
 ### 1.1 Edge Routing & Point-of-Presence (Observed)
 - **Host Edge:** Requests return headers `Server: Vercel`, `X-Vercel-Id: bom1::...`, confirming termination at Vercel's edge node in Mumbai, India.

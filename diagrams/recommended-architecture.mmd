@@ -16,7 +16,7 @@ graph TB
 
     subgraph App_Layer ["3. Application Services Tier (Node.js / Express / NestJS)"]
         Controller["Inquiry Controller\n• DTO extraction & status orchestration\n• Standardized ApiResponse envelope"]
-        Validation["Zod Validation Layer\n• Runtime schema parsing\n• Unicode name support (\p{L})\n• Anti-bot honeypot trapping"]
+        Validation["Zod Validation Layer\n• Runtime schema parsing\n• Unicode name support\n• Anti-bot honeypot trapping"]
         Service["Inquiry Business Service\n• Domain business logic & transactions\n• Async worker job dispatching"]
         Repository["Inquiry Repository\n• Typed Prisma ORM query builder\n• Read-through cache coordination"]
     end

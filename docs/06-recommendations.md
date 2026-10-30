@@ -10,29 +10,40 @@
 
 As Cynbit scales its AI agent automation products (Cynbit Studio, Revio), SaaS offerings (TenantEase), and education programs (BitElevate), the backend architecture should transition toward a **decoupled service model**:
 
+```mermaid
+graph TB
+    subgraph Client_Layer ["1. Client & Ingress Tier"]
+        Client["Web / Mobile Clients"]
+        EdgeWAF["Edge CDN & WAF (Cloudflare / Vercel Edge)<br/>• Edge Rate Limiting & Bot Filtering<br/>• Strict Security Headers (CSP, HSTS)"]
+    end
+    subgraph Gateway_Layer ["2. API Gateway & Middleware Pipeline"]
+        Gateway["Reverse Proxy & Gateway<br/>• Correlation ID (x-request-id)<br/>• Strict CORS Whitelist"]
+        RateLimit["Rate Limiting Middleware<br/>• Atomic Lua Counter (PTTL)<br/>• RFC 9333 Headers"]
+        AuthGuard["JWT & RBAC Guard<br/>• jose HS256 Verification<br/>• 60s Clock-Skew Tolerance"]
+    end
+    subgraph App_Layer ["3. Application Services Tier"]
+        Controller["Inquiry Controller<br/>• Standardized ApiResponse envelope"]
+        Validation["Zod Validation Layer<br/>• Unicode name support<br/>• Honeypot trapping"]
+        Service["Inquiry Business Service<br/>• Domain logic & async job dispatch"]
+        Repository["Inquiry Repository<br/>• Prisma ORM query builder"]
+    end
+    subgraph Cache_Queue ["4. Cache & Async Worker Tier"]
+        Redis[("Redis Cluster<br/>• Rate limits & session revocation<br/>• Read-through cache")]
+        BullMQ["BullMQ / Message Queue<br/>• Transactional email queue"]
+        Workers["Background Workers<br/>• Email & webhook dispatch"]
+    end
+    subgraph Persistence_Layer ["5. Data Persistence Tier"]
+        PgBouncer["Connection Pooler (PgBouncer)"]
+        Postgres[("PostgreSQL 16 (Primary OLTP)")]
+    end
+    Client --> EdgeWAF --> Gateway --> RateLimit --> AuthGuard --> Controller --> Validation --> Service --> Repository
+    RateLimit -.-> Redis
+    AuthGuard -.-> Redis
+    Repository -.-> Redis
+    Service -.-> BullMQ --> Workers
+    Repository --> PgBouncer --> Postgres
 ```
-[ Client Applications ]
-        │  HTTPS / TLS 1.3
-        ▼
-[ Edge CDN & WAF (Cloudflare / Vercel) ]
-        │  Reverse Proxy / Ingress
-        ▼
-[ API Gateway / Common Middlewares ]
-  ├── Strict CORS Policy
-  ├── Correlation ID Injection (x-request-id)
-  ├── Fixed-Window Rate Limiter (Redis Lua / RFC 9333)
-  └── JWT Authentication & RBAC Guard (jose)
-        │
-        ▼
-[ Application Services Layer (Node.js / Express or NestJS) ]
-  ├── Controllers: DTO extraction, envelope formatting, HTTP status
-  ├── Services: Pure business logic, async job dispatching
-  └── Repositories: Prisma ORM queries, cache invalidation
-        │
-        ├──► [ Redis Cluster: Caching, Distributed Rate Limiting, Revocation ]
-        ├──► [ BullMQ / Message Broker: Async Email & Webhook Workers ]
-        └──► [ PostgreSQL 16: Primary Relational Persistence + PgBouncer Pool ]
-```
+*(Interactive visual version with zoom/pan available at [`diagrams/index.html`](../diagrams/index.html) and source at [`diagrams/recommended-architecture.mmd`](../diagrams/recommended-architecture.mmd)).*
 
 ---
 

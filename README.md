@@ -12,7 +12,7 @@ If you have 2–5 minutes to evaluate this audit, start here:
 |:---|:---|:---|
 | **Executive Summary** | [`docs/01-audit-overview.md`](./docs/01-audit-overview.md) | High-level findings, assessment protocol, and evidence boundaries. |
 | **Observed Architecture** | [`docs/02-architecture-analysis.md`](./docs/02-architecture-analysis.md) | Next.js Server Action RPC analysis and Vercel edge deployment mechanics. |
-| **Visual Diagrams** | [`diagrams/`](./diagrams/) | Clean Mermaid diagrams for observed flow, recommended topology, and security lifecycle. |
+| **Visual Diagrams** | [`diagrams/README.md`](./diagrams/README.md) | GitHub-rendered diagrams + [Interactive Visualizer](./diagrams/index.html) (pan, zoom, tabs). |
 | **Security Review** | [`docs/04-security-findings.md`](./docs/04-security-findings.md) | Transport security analysis and 7 concrete header hardening recommendations. |
 | **Performance Profile** | [`docs/05-performance-findings.md`](./docs/05-performance-findings.md) | Edge cache hit latencies (49ms–131ms) vs. dynamic SSR compute latencies (780ms–1576ms). |
 | **Target Architecture** | [`docs/06-recommendations.md`](./docs/06-recommendations.md) | Decoupled Node.js backend blueprint with Controller-Service-Repository pattern. |
@@ -71,7 +71,9 @@ cynbit-backend-audit/
 │   ├── validation.test.ts              # 14 tests covering Zod schemas and bot honeypot
 │   ├── error-handler.test.ts           # 8 tests covering error translation and masking
 │   └── database.test.ts                # 6 tests covering repository queries and caching
-└── diagrams/                           # Mermaid architecture flow diagrams
+└── diagrams/                           # Visual architecture models & interactive viewer
+    ├── README.md                       # Visual diagram showcase with native GitHub Mermaid rendering
+    ├── index.html                      # Standalone interactive visualizer (pan, zoom, tabs, theme toggle)
     ├── observed-request-flow.mmd       # Observed Next.js Server Action sequence flow
     ├── recommended-architecture.mmd    # Multi-tier system architecture diagram
     └── security-request-flow.mmd       # End-to-end security and validation sequence flow

@@ -44,7 +44,7 @@ sequenceDiagram
 
                 Note over RBAC,Val: 4. Zero-Trust Input Validation
                 Val->>Val: Execute Zod schema validation (safeParseAsync)
-                Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name (\p{L})
+                Val->>Val: Check honeypot trap, normalize email, sanitize Unicode name
                 alt Input Invalid or Honeypot Triggered
                     Val-->>Client: 400 Bad Request (Field-level validation error envelope)
                 else Input Validated
